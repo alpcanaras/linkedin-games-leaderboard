@@ -114,7 +114,10 @@ python3 league.py daily-report                      # print it
 python3 league.py daily-report --sync --email --once  # sync, email it once per day
 ```
 
-LinkedIn's API cannot send chat messages for you, so the message is emailed and you paste it into the chat. Email uses SMTP settings in `~/.games-league-mail.json` (`user`, `password`, optional `to`, `host`, `port`; for Gmail use an app password). Schedule the command shortly after the reset, at 00:05 Pacific; with `--once` it is safe to run it at both 08:05 and 09:05 Central European time to cover the weeks when Europe and the US change clocks on different dates.
+LinkedIn's API cannot send chat messages for you, so you paste the message into the chat yourself. Two ways to get it on your phone:
+
+- **iPhone shortcut**: `--save-dir` writes `<league>.txt` (the message) and `<league>-chat.txt` (a link to the LinkedIn chat). Point it at `~/Library/Mobile Documents/iCloud~is~workflow~my~workflows/Documents/Games League` (shown on the iPhone as iCloud Drive › Shortcuts › Games League) and build a shortcut: *Get File* `Games League/<league>.txt` → *Copy to Clipboard* → *Get File* `Games League/<league>-chat.txt` → *Open URLs*. One tap copies the message and opens the chat.
+- **Email**: `--email`. Email uses SMTP settings in `~/.games-league-mail.json` (`user`, `password`, optional `to`, `host`, `port`; for Gmail use an app password). Schedule the command shortly after the reset, at 00:05 Pacific; with `--once` it is safe to run it at both 08:05 and 09:05 Central European time to cover the weeks when Europe and the US change clocks on different dates.
 
 ### Global averages
 

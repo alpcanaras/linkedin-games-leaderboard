@@ -545,6 +545,10 @@ def daily_report_text(con, cfg, day):
                      f" · {wins} daily win{'s' if wins != 1 else ''}")
     return "\n".join(lines)
 
+def chat_url(cfg):
+    """Web link to the league's LinkedIn conversation; override with "chat_url" in leagues.json."""
+    return cfg.get("chat_url") or f"https://www.linkedin.com/messaging/thread/{cfg['conversation_id']}/"
+
 MAIL_FILE = Path.home() / ".games-league-mail.json"
 
 def send_email(subject, body):
@@ -739,6 +743,8 @@ def main():
     dr.add_argument("--sync",action="store_true",help="Sync from LinkedIn first")
     dr.add_argument("--email",action="store_true",help=f"Email it (SMTP settings in {MAIL_FILE})")
     dr.add_argument("--once",action="store_true",help="Do nothing if this day's email was already sent")
+    dr.add_argument("--save-dir",help="Also write <league>.txt (the message) and <league>-chat.txt (link to the "
+                                      "LinkedIn chat) here, e.g. an iCloud Drive folder read by an iPhone shortcut")
     args=ap.parse_args()
     cfg=load_league_config(args.leagues,args.league,args.demo)
     args.league=cfg["league_key"]
@@ -756,8 +762,15 @@ def main():
             for lcfg,lcon in leagues:
                 try: sync_linkedin(lcon,lcfg,linkedin_token())
                 except RuntimeError as exc: print(f"Sync error ({lcfg['league_key']}): {exc}",file=sys.stderr)
-        body="\n\n\n".join(daily_report_text(lcon,lcfg,day) for lcfg,lcon in leagues)
+        texts=[daily_report_text(lcon,lcfg,day) for lcfg,lcon in leagues]
+        body="\n\n\n".join(texts)
         print(body)
+        if args.save_dir:
+            out=Path(args.save_dir).expanduser(); out.mkdir(parents=True,exist_ok=True)
+            for (lcfg,_),text in zip(leagues,texts):
+                (out/f"{lcfg['league_key']}.txt").write_text(text+"\n",encoding="utf-8")
+                (out/f"{lcfg['league_key']}-chat.txt").write_text(chat_url(lcfg)+"\n",encoding="utf-8")
+            print(f"Saved to {out}")
         if args.email:
             if all(day<date.fromisoformat(lcfg["start_date"]) for lcfg,_ in leagues):
                 print("Season has not started: no email sent"); return
