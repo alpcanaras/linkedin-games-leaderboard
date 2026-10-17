@@ -39,6 +39,21 @@ GAME_RX_NUMBER_FIRST = re.compile(
     re.IGNORECASE,
 )
 
+# LinkedIn numbers each game's daily puzzle one higher per Pacific day (checked over two years of
+# shares). Bonus puzzles are numbered from 1,000,000 and are not part of the daily league.
+PUZZLE_REFERENCE_DAY = date(2026, 10, 17)
+PUZZLE_ON_REFERENCE_DAY = {"Queens": 900, "Tango": 740, "Zip": 579, "Mini Sudoku": 432,
+                           "Crossclimb": 900, "Wend": 131, "Patches": 214}
+BONUS_PUZZLE_FROM = 1_000_000
+
+def puzzle_check(game, number, puzzle_day):
+    """'ok', 'bonus', or 'old' (a share of an earlier day's puzzle, e.g. yesterday's posted after the reset)."""
+    if number >= BONUS_PUZZLE_FROM:
+        return "bonus"
+    expected = PUZZLE_ON_REFERENCE_DAY[game] + (puzzle_day - PUZZLE_REFERENCE_DAY).days
+    # Only reject numbers just below today's; anything else is kept, in case LinkedIn renumbers.
+    return "old" if expected - 7 <= number < expected else "ok"
+
 def parse_scores(text):
     """Returns (game, puzzle number, time seconds). Ignores unrelated text and score marketing copy."""
     found = []
@@ -168,6 +183,11 @@ def ingest_rows(con, cfg, rows):
               continue
           puzzle_day = puzzle_date.isoformat()
           for game, puzzle_num, seconds in matches:
+              check = puzzle_check(game, puzzle_num, puzzle_date)
+              if check != "ok":
+                  # A late share never changes a closed day and never counts as the new day's puzzle.
+                  stats[f"ignored_{check}_puzzle"] += 1
+                  continue
               data = f"{target}|{row.get('DATE')}|{row.get('FROM')}|{game}|{puzzle_num}|{seconds}"
               digest = hashlib.sha256(data.encode()).hexdigest()
               cur = con.execute("""INSERT OR IGNORE INTO results(game,puzzle_date,player,puzzle_number,seconds,msg_time,fingerprint)
@@ -501,23 +521,28 @@ def daily_report_text(con, cfg, day):
     end_of_day = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=PT)
     data = leaderboard(con, dict(cfg, end_date=day.isoformat()), now=end_of_day)
     today = next(d for d in data["daily_overall"] if d["date"] == day.isoformat())
-    medals = ["🥇", "🥈", "🥉"]
-    lines = [f"🏆 {data['league_name']} · {day:%a %d %b} · final", ""]
-    for i, (p, v) in enumerate(sorted(today["players"].items(), key=lambda kv: kv[1]["seconds"])):
-        missed = f" ({v['missed']} missed)" if v["missed"] else ""
-        lines.append(f"{medals[i] if i < 3 else f'{i+1}.'} {p} {clock(v['seconds'])}{missed}")
-    fastest = []
+    # Like goals for and against: each game someone completed gives a beat to its fastest player(s)
+    # and a "beaten" to everyone else.
+    beats, beaten, fastest = Counter(), Counter(), []
     for d in data["daily"]:
         winners = [p for p, v in d["players"].items() if v["is_fastest"]]
         if d["date"] == day.isoformat() and winners:
+            for p in d["players"]:
+                (beats if p in winners else beaten)[p] += 1
             fastest.append(f"{GAME_EMOJI[d['game']]} {' & '.join(winners)} {clock(d['players'][winners[0]]['seconds'])}")
+    medals = ["🥇", "🥈", "🥉"]
+    lines = [f"🏆 {data['league_name']} · {day:%a %d %b} · final", ""]
+    for i, (p, v) in enumerate(sorted(today["players"].items(), key=lambda kv: kv[1]["seconds"])):
+        missed = f" · {v['missed']} missed" if v["missed"] else ""
+        lines.append(f"{medals[i] if i < 3 else f'{i+1}.'} {p} {clock(v['seconds'])} · {beats[p]} beats, {beaten[p]} beaten{missed}")
     if fastest:
         lines += ["", "Fastest: " + " · ".join(fastest)]
     n = len(data["daily_overall"])
     lines += ["", f"Season after {n} day{'s' if n != 1 else ''}:"]
     for i, (p, v) in enumerate(sorted(data["overall"].items(), key=lambda kv: kv[1]["seconds"])):
         wins = v["daily_wins"]
-        lines.append(f"{i+1}. {p} {clock(v['seconds'])} · {wins} daily win{'s' if wins != 1 else ''}")
+        lines.append(f"{i+1}. {p} {clock(v['seconds'])} · {v['beats']} beats, {v['beaten']} beaten"
+                     f" · {wins} daily win{'s' if wins != 1 else ''}")
     return "\n".join(lines)
 
 MAIL_FILE = Path.home() / ".games-league-mail.json"

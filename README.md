@@ -41,7 +41,10 @@ Each league has its own sandbox, for example `python3 league.py --demo --league 
 - The leaderboard also ignores any pre-start records that end up in the database.
 - Sandbox scores live in `demo_<league>.db`, real scores in `official_<league>.db`. They never overlap.
 
-The puzzle day of a score is the Pacific date of the message. Puzzle numbers go up by one per day for each game, and the dashboard flags a day where players posted different puzzle numbers.
+The puzzle day of a score is the Pacific date of the message, and a day closes at the reset. LinkedIn numbers each game's daily puzzle one higher per day, so a score only counts for its own day's puzzle:
+
+- A share of an earlier puzzle (for example yesterday's, posted a minute after the reset) is ignored. It neither changes the closed day nor counts as the new day.
+- Bonus puzzles (numbered from 1,000,000) are ignored.
 
 ## Scoring
 
@@ -52,7 +55,8 @@ Seven divisions: **Queens, Tango, Zip, Mini Sudoku, Crossclimb, Wend, Patches**.
 - While nobody has played a game on the current day, missing players show as "awaiting" with 0.
 - Once somebody posts, absent players get a visible **provisional** penalty, replaced by their real time when they post. At midnight Pacific, remaining penalties become final.
 - If everyone plays, there is no penalty.
-- Tied fastest times both count as a beat; everyone else in a finalised game counts as beaten. Daily overall wins are tracked separately.
+- **Beats and beaten**, like goals for and against: in every finished game that at least one player completed, the fastest player gets a beat (ties: all of them) and everyone else gets a beaten. Fastest in Queens and Tango on a 7-game day means 2 beats, 5 beaten. The daily message shows each day's count and the season total. Daily overall wins are tracked separately.
+- **Reference times**: set `fallback_seconds` to your group's typical time per game and weekday, so penalties stay proportionate (easy days tight, hard days larger). After three weeks of the season, the league's own same-weekday medians take over automatically.
 - Standings are recomputed from stored scores on every page load, so a score imported late corrects the right day.
 
 **IMPORTANT:** The fallback reference times in `leagues.example.json` are rough guesses, **not LinkedIn averages**. Agree on them with your players.

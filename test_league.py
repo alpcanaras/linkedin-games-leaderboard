@@ -194,8 +194,8 @@ class ChangelogTests(unittest.TestCase):
         return sorted((r["player"],r["game"],r["seconds"]) for r in self.con.execute("SELECT * FROM results"))
     def test_owner_known_and_two_player_chat_infers_other(self):
         from league import ingest_changelog
-        stats = ingest_changelog(self.con, self.pair, [self.ev(1,"urn:li:person:SIS","pair","Zip #580 | 0:27"),
-                                                       self.ev(2,"urn:li:person:ME","pair","578. Zip | 0:15")])
+        stats = ingest_changelog(self.con, self.pair, [self.ev(1,"urn:li:person:SIS","pair","Zip #581 | 0:27"),
+                                                       self.ev(2,"urn:li:person:ME","pair","581. Zip | 0:15")])
         self.assertEqual(stats["unknown_sender"], 0)
         self.assertEqual(self.results(), [("A","Zip",15),("B","Zip",27)])
     def test_group_sender_waits_until_mapped(self):
@@ -240,5 +240,28 @@ class DailyReportTests(unittest.TestCase):
         self.assertIn("👑 A 0:20", text)
         self.assertIn("🏁 B 0:05", text)
         self.assertIn("Season after 1 day:", text)
+        # A: fastest Queens, beaten on Zip (missed). Games nobody completed give no beats or beaten.
+        self.assertIn("🥇 A 1:32 · 1 beats, 1 beaten · 6 missed", text)
+        self.assertIn("🥈 B 1:35 · 1 beats, 1 beaten · 5 missed", text)
         self.assertNotIn("0:01", text)  # the next day's score is not part of this report
         self.assertIn("season starts", daily_report_text(con, cfg, date(2026,10,18)))
+
+class PuzzleNumberTests(unittest.TestCase):
+    def setUp(self):
+        self.t = tempfile.TemporaryDirectory()
+        self.con = open_db(Path(self.t.name)/"p.db")
+        self.cfg = {"start_date":"2026-10-19","conversation_id":"c","players":["A","B"],"aliases":{"A":["Alice"],"B":["Bob"]},
+                    "fallback_seconds":dict.fromkeys(["Queens","Tango","Zip","Mini Sudoku","Crossclimb","Wend","Patches"],[60]*7)}
+    def tearDown(self):
+        self.con.close(); self.t.cleanup()
+    def test_late_share_of_yesterday_changes_nothing(self):
+        # Queens #902 is Monday 19 Oct. At 09:01 in Germany (00:01 Pacific) Tuesday's puzzle is #903.
+        rows = [{"CONVERSATION ID":"c","FROM":"Alice","DATE":"2026-10-20 07:01:00 UTC","CONTENT":"Queens #902 | 0:20"},
+                {"CONVERSATION ID":"c","FROM":"Alice","DATE":"2026-10-20 15:00:00 UTC","CONTENT":"Queens #903 | 0:31"}]
+        stats = ingest_rows(self.con, self.cfg, rows)
+        self.assertEqual(stats, {"ignored_old_puzzle":1, "inserted":1})
+        self.assertEqual([tuple(r) for r in self.con.execute("SELECT puzzle_date,puzzle_number,seconds FROM results")],
+                         [("2026-10-20",903,31)])
+    def test_bonus_puzzle_ignored(self):
+        rows = [{"CONVERSATION ID":"c","FROM":"Bob","DATE":"2026-10-19 12:00:00 UTC","CONTENT":"Bonus puzzleQueens #1000027 | 1:14"}]
+        self.assertEqual(ingest_rows(self.con, self.cfg, rows), {"ignored_bonus_puzzle":1})
