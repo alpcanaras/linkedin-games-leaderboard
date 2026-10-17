@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Games League</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e9edf5;background:#0b1220;font-variant-numeric:tabular-nums}
+*{box-sizing:border-box}body{margin:0;padding:28px 16px 80px}.wrap{max-width:1060px;margin:auto}
+h1{font-size:clamp(1.65rem,3.2vw,2.35rem);letter-spacing:-.04em;margin:7px 0 3px}h2{font-size:1.05rem;margin:0 0 14px}p{line-height:1.5}
+.lead,.muted{color:#94a3b8}.lead{margin:0 0 25px}.eyebrow{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#7fa5e5;font-weight:700}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}.flag{font-size:.72rem;font-weight:750;border-radius:20px;padding:6px 10px;background:#19375a;color:#b5d5ff;border:1px solid #38679e;white-space:nowrap}.demoFlag{background:#3c2716;color:#ffd8a9;border-color:#ad7737}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:20px 0}.metric{background:#131e31;border:1px solid #293c55;border-radius:12px;padding:15px}.metric .value{font-size:1.45rem;font-weight:730;margin-top:5px;white-space:nowrap}.metric small{color:#93a8c1}
+.panel{background:#131e31;border:1px solid #293c55;border-radius:15px;padding:20px;margin:15px 0}.toprow{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.tab,.btn{border:1px solid #3b506f;border-radius:9px;padding:9px 11px;font-size:.86rem;color:#cfdaeb;background:#1a2940;cursor:pointer}.tab.active{background:#285aa1;border-color:#6a9fdc;color:#fff}.btn:hover,.tab:hover{filter:brightness(1.15)}
+.tableWrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:570px}th,td{text-align:right;border-bottom:1px solid #2a4059;padding:11px 9px;white-space:nowrap}th{text-transform:uppercase;font-size:.7rem;letter-spacing:.06em;color:#92a9c1}th:first-child,td:first-child{text-align:left}tbody tr:last-child td{border-bottom:0}.num{font-weight:700;font-size:1.06rem}.winner{color:#86e0b7}.pill{font-size:.69rem;padding:2px 7px;border:1px solid #426080;border-radius:11px;color:#b6cce5;white-space:nowrap}.pill.warn{border-color:#926d33;color:#e7c58a}.pill.good{border-color:#357c64;color:#88e4bd}
+.days{display:grid;gap:11px}.day{padding:12px 14px;border:1px solid #2b4059;border-radius:10px;background:#101a2b}.dayhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.scores{display:flex;gap:8px 15px;flex-wrap:wrap;margin-top:9px;font-size:.91rem}.scores span{white-space:nowrap}.subtext{font-size:.78rem;color:#94a3b8;margin-top:6px}.hr{height:1px;background:#30415a;margin:17px 0}
+.demoArea{border:1px solid #775537;background:#211d1a;border-radius:15px;padding:20px;margin:15px 0}.demoArea h2{color:#ffd0a0}.controlRow{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.formFields{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr)) 1fr;gap:8px;margin-top:13px}label{display:block;font-size:.78rem;color:#adbdcf;margin-bottom:5px}select,input{width:100%;background:#0e192a;border:1px solid #445773;border-radius:8px;padding:10px;color:#edf2fa;font:inherit}option{background:#0e192a}.foot{font-size:.82rem;color:#94a3b8;line-height:1.7}.msg{font-size:.85rem;color:#dbbd90;margin-top:10px}.hide{display:none}
+@media(max-width:700px){.metrics{grid-template-columns:repeat(2,1fr)}.panel{padding:15px}.formFields{grid-template-columns:repeat(2,1fr)}.formFields .formBtn{grid-column:1/-1}.tableWrap{margin:0 -5px}.flag{order:2}}
+</style>
+</head>
+<body><main class="wrap">
+<header><div><div class="eyebrow">Personal games championship</div><h1 id="leagueTitle">LinkedIn Games League</h1><p class="lead" id="subhead">7 divisions · cumulative raw seconds · lowest total wins</p></div><span class="flag" id="badge">OFFICIAL</span></header>
+<div class="metrics"><div class="metric"><small>League begins</small><div class="value" id="startMetric">...</div></div><div class="metric"><small>Completed entries</small><div class="value" id="playedMetric">0</div></div><div class="metric"><small>Penalties finalized</small><div class="value" id="missedMetric">0</div></div><div class="metric"><small>Projected penalties</small><div class="value" id="pendingMetric">0</div></div></div>
+<section id="demoArea" class="demoArea hide">
+<div class="toprow"><h2>Practice controls, synthetic data only</h2><button class="btn" id="resetDemo">Reset sample results</button></div>
+<p class="subtext">Explore what happens when players submit late or nobody plays. The official leagues remain untouched.</p>
+<div class="controlRow"><label for="asofSelect" style="margin:0">View scores as of</label><select id="asofSelect" style="width:auto"><option value="2026-10-16">Friday 16 Oct, midday PT</option><option value="2026-10-17">Saturday 17 Oct, midday PT</option><option value="2026-10-18">Sunday 18 Oct, midday PT</option><option value="after">After Sunday reset, all practice scores final</option></select></div>
+<div class="hr"></div><h2>Simulate someone posting a score</h2>
+<form class="formFields" id="scoreForm">
+<div><label for="demoDate">Puzzle day</label><select id="demoDate"><option>2026-10-16</option><option>2026-10-17</option><option selected>2026-10-18</option></select></div>
+<div><label for="demoGame">Game</label><select id="demoGame"></select></div>
+<div><label for="demoPlayer">Player</label><select id="demoPlayer"></select></div>
+<div><label for="demoSeconds">Time (MM:SS)</label><input id="demoSeconds" value="0:25" autocomplete="off" required pattern="[0-9]+(:[0-5][0-9]){0,2}"></div>
+<div class="formBtn" style="align-self:end"><button class="btn" type="submit" style="width:100%">Save mock score</button></div>
+</form><div class="msg" id="demoMessage"></div>
+</section>
+<section class="panel"><div class="toprow"><h2>Championship standings</h2><span class="pill" id="dayState">...</span></div><nav class="tabs" id="tabs"></nav><div class="tableWrap"><table><thead><tr><th>Rank / Player</th><th>Total time</th><th>Played</th><th>Missed</th><th>Provisional</th><th>Beats / Beaten</th><th>Daily wins</th></tr></thead><tbody id="standings"></tbody></table></div><p class="foot" id="emptyNote"></p></section>
+<section class="panel"><h2>Daily aggregate, all divisions</h2><div class="days" id="dayTotals"></div></section>
+<section class="panel"><h2>Detailed results</h2><div class="days" id="details"></div></section>
+<p class="foot">Actual times are never normalized. For missing results, provisional and final penalties use ceil(1.125 × max(slowest posted time, recorded LinkedIn global average or fallback reference)). No provisional penalty is charged before anybody has played that game. Live penalties become final at LinkedIn's midnight Pacific reset. Scores submitted before the official start are never counted. The illustrative fallback values are not verified LinkedIn statistics.</p>
+</main>
+<script>
+'use strict';
+const DATA=__DATA__;
+const DEMO=__DEMO__;
+const ASOF=__ASOF__;
+const GAMES=['Overall','Queens','Tango','Zip','Mini Sudoku','Crossclimb','Wend','Patches'];
+let selected='Overall';
+function fmt(n){if(n==null)return '—';n=Math.round(n);const h=Math.floor(n/3600),m=Math.floor((n%3600)/60),s=n%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`}
+function esc(v){return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;')}
+function formatDay(day){return new Date(`${day}T12:00:00Z`).toLocaleDateString('en-GB',{day:'numeric',month:'short',weekday:'short'})}
+function scoreBadge(s){return s==='played'?'':s==='missed'?'<span class="pill warn">missed</span>':s==='provisional'?'<span class="pill">projected</span>':'<span class="pill">awaiting</span>'}
+function render(){
+  document.getElementById('leagueTitle').textContent=DATA.league_name;
+  document.getElementById('badge').textContent=DEMO?'SANDBOX · NOT REAL':'OFFICIAL · NO BACKFILL';
+  document.getElementById('badge').className='flag'+(DEMO?' demoFlag':'');
+  document.getElementById('startMetric').textContent=formatDay(DATA.start_date);
+  let all=Object.values(DATA.overall);document.getElementById('playedMetric').textContent=all.reduce((a,b)=>a+b.played,0);
+  document.getElementById('missedMetric').textContent=all.reduce((a,b)=>a+b.missed,0);
+  document.getElementById('pendingMetric').textContent=all.reduce((a,b)=>a+b.pending,0);
+  document.getElementById('subhead').textContent=`${DATA.players.length} competitors · 7 divisions · raw cumulative time · 12.5% premium`;
+  document.getElementById('dayState').textContent=DATA.daily.length?'As of '+DATA.today_pt:'Starts '+DATA.start_date;
+  document.getElementById('tabs').innerHTML=GAMES.map(g=>`<button type="button" class="tab ${selected===g?'active':''}" data-game="${esc(g)}">${esc(g)}</button>`).join('');
+  document.querySelectorAll('[data-game]').forEach(b=>b.addEventListener('click',()=>{selected=b.dataset.game;render()}));
+  const scores=selected==='Overall'?DATA.overall:DATA.totals[selected];
+  document.getElementById('standings').innerHTML=Object.entries(scores).sort((a,b)=>a[1].seconds-b[1].seconds).map(([p,v],i)=>`<tr><td>${i+1}. <strong>${esc(p)}</strong></td><td class="num">${fmt(v.seconds)}</td><td>${v.played}</td><td>${v.missed}</td><td>${v.pending}</td><td><span class="winner">${v.beats}</span> / ${v.beaten}</td><td>${v.daily_wins===undefined?'—':v.daily_wins}</td></tr>`).join('');
+  document.getElementById('emptyNote').textContent=DATA.daily.length===0?'Scheduled. This league does not import or score messages sent before the start date.':`Last imported: ${DATA.last_import||'not yet'} · Beat means fastest for a finalized game, ties share the win.`;
+  if(DATA.unknown_senders)document.getElementById('emptyNote').textContent+=` · ⚠ ${DATA.unknown_senders} score message(s) from a sender not yet matched to a player. Run: python3 league.py --league ${DATA.league_key} senders`;
+  document.getElementById('dayTotals').innerHTML=DATA.daily_overall.slice().reverse().slice(0,10).map(d=>`<article class="day"><div class="dayhead"><b>${formatDay(d.date)}</b><span class="pill ${d.final?'good':''}">${d.final?'Final':'Provisional'}</span></div><div class="scores">${Object.entries(d.players).sort((a,b)=>a[1].seconds-b[1].seconds).map(([p,v])=>`<span class="${v.is_fastest?'winner':''}">${esc(p)}: <strong>${fmt(v.seconds)}</strong>${v.is_fastest?' ★':''}</span>`).join('')}</div></article>`).join('')||'<p class="muted">No puzzle days have started.</p>';
+  const entries=DATA.daily.filter(d=>selected==='Overall'||d.game===selected).slice().reverse().slice(0,30);
+  document.getElementById('details').innerHTML=entries.map(d=>`<article class="day"><div class="dayhead"><b>${esc(d.game)} <span class="muted">· ${formatDay(d.date)}</span></b><span class="pill ${d.final?'good':''}">${d.final?'Final':'Live'}</span></div><div class="scores">${Object.entries(d.players).map(([p,v])=>`<span class="${v.is_fastest?'winner':''}">${esc(p)}: <b>${fmt(v.seconds)}</b> ${scoreBadge(v.status)}${v.is_fastest?' ★':''}</span>`).join('')}</div><div class="subtext">Missing penalty: ${d.missing_penalty?fmt(d.missing_penalty):'none'} · Global avg: ${d.global_average?fmt(d.global_average):'not available'} · Reference: ${fmt(d.reference)}${d.puzzle_numbers_conflict?' · WARNING: different puzzle numbers':''}</div></article>`).join('')||'<p class="muted">No results yet.</p>';
+}
+async function demoPost(endpoint, payload){
+ const resp=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+ const data=await resp.json();if(!resp.ok)throw Error(data.error||`Error ${resp.status}`);
+ location.reload();
+}
+if(DEMO){
+ document.getElementById('demoArea').classList.remove('hide');
+ // Without ?asof the server shows the real current time, so select the option matching it.
+ const asofSel=document.getElementById('asofSelect');
+ asofSel.value=ASOF||([...asofSel.options].some(o=>o.value===DATA.today_pt)?DATA.today_pt:'after');
+ document.getElementById('asofSelect').addEventListener('change',e=>{location.href='/?asof='+encodeURIComponent(e.target.value)});
+ document.getElementById('demoGame').innerHTML=GAMES.slice(1).map(g=>`<option>${esc(g)}</option>`).join('');
+ document.getElementById('demoPlayer').innerHTML=DATA.players.map(p=>`<option>${esc(p)}</option>`).join('');
+ document.getElementById('scoreForm').addEventListener('submit',async e=>{e.preventDefault();const frm={date:document.getElementById('demoDate').value,game:document.getElementById('demoGame').value,player:document.getElementById('demoPlayer').value,seconds:document.getElementById('demoSeconds').value};try{await demoPost('/demo/score',frm)}catch(err){document.getElementById('demoMessage').textContent=err.message}});
+ document.getElementById('resetDemo').addEventListener('click',async()=>{try{await demoPost('/demo/reset',{})}catch(err){document.getElementById('demoMessage').textContent=err.message}});
+}
+render();
+// Auto-refresh only the official live view. Demo pages should not interrupt form inputs.
+if(!DEMO)setTimeout(()=>location.reload(),60000);
+</script>
+</body></html>

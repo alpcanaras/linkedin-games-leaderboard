@@ -1,0 +1,17 @@
+# Your real roster: names, LinkedIn sender names and conversation IDs.
+# Copy leagues.example.json to leagues.json and keep it local.
+leagues.json
+
+# Score databases (sandbox and official) and generated reports
+*.db
+*.db-journal
+leaderboard.html
+
+# Secrets: the token lives in ~/.linkedin-league-token, never in the repo
+.env
+*.token
+
+# Local tooling
+.claude/
+__pycache__/
+.DS_Store
