@@ -773,8 +773,11 @@ def main():
             out=Path(args.save_dir).expanduser(); out.mkdir(parents=True,exist_ok=True)
             for (lcfg,_),text in zip(leagues,texts):
                 name=lcfg.get("share_name") or lcfg["league_key"]
-                (out/f"{name}.txt").write_text(text+"\n",encoding="utf-8")
-                (out/f"{name}-chat.txt").write_text(chat_url(lcfg)+"\n",encoding="utf-8")
+                for f,content in ((out/f"{name}.txt",text+"\n"),(out/f"{name}-chat.txt",chat_url(lcfg)+"\n")):
+                    # Rewrite only on change: every new iCloud version can land on the phone as a
+                    # not-yet-downloaded placeholder that Shortcuts cannot open.
+                    if not f.exists() or f.read_text(encoding="utf-8")!=content:
+                        f.write_text(content,encoding="utf-8")
             print(f"Saved to {out}")
         if args.email:
             if all(day<date.fromisoformat(lcfg["start_date"]) for lcfg,_ in leagues):
