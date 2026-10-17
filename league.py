@@ -551,6 +551,8 @@ def send_email(subject, body):
     """SMTP settings in ~/.games-league-mail.json: user, password (e.g. a Gmail app password), optional to/host/port."""
     import smtplib
     from email.message import EmailMessage
+    if not MAIL_FILE.exists():
+        raise SystemExit(f"{MAIL_FILE} not found: save the SMTP user and (app) password there to send email.")
     settings = json.loads(MAIL_FILE.read_text(encoding="utf-8"))
     msg = EmailMessage()
     msg["Subject"], msg["From"], msg["To"] = subject, settings["user"], settings.get("to", settings["user"])
