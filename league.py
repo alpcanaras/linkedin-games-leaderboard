@@ -342,11 +342,13 @@ def map_sender(con, cfg, urn, name):
     remember_sender(con, urn, alias, "manual", override=True)
     return resolve_changelog(con, cfg)
 
-def sync_linkedin(con, cfg, token):
+def sync_linkedin(con, cfg, token, snapshot=True):
     """Live changelog first, then the full INBOX snapshot (catch-up, and it teaches sender URNs)."""
     with DB_LOCK:
         row = con.execute("SELECT value FROM metadata WHERE key='changelog_cursor'").fetchone()
     stats = {"changelog": ingest_changelog(con, cfg, api_changelog_events(token, int(row[0]) if row else None))}
+    if not snapshot:
+        return stats
     try:
         snapshot = list(api_snapshot_pages(token))
     except RuntimeError as exc:
@@ -743,8 +745,9 @@ def main():
     dr.add_argument("--sync",action="store_true",help="Sync from LinkedIn first")
     dr.add_argument("--email",action="store_true",help=f"Email it (SMTP settings in {MAIL_FILE})")
     dr.add_argument("--once",action="store_true",help="Do nothing if this day's email was already sent")
-    dr.add_argument("--save-dir",help="Also write <league>.txt (the message) and <league>-chat.txt (link to the "
-                                      "LinkedIn chat) here, e.g. an iCloud Drive folder read by an iPhone shortcut")
+    dr.add_argument("--save-dir",help="Also write <name>.txt (the message) and <name>-chat.txt (link to the LinkedIn "
+                                      "chat) here, e.g. an iCloud Drive folder read by an iPhone shortcut. <name> is the "
+                                      "league's share_name in leagues.json, else its key")
     args=ap.parse_args()
     cfg=load_league_config(args.leagues,args.league,args.demo)
     args.league=cfg["league_key"]
@@ -760,7 +763,8 @@ def main():
             print(f"Report for {day} already sent"); return
         if args.sync:
             for lcfg,lcon in leagues:
-                try: sync_linkedin(lcon,lcfg,linkedin_token())
+                # Changelog only: fast, and it holds the last minutes before the reset.
+                try: sync_linkedin(lcon,lcfg,linkedin_token(),snapshot=False)
                 except RuntimeError as exc: print(f"Sync error ({lcfg['league_key']}): {exc}",file=sys.stderr)
         texts=[daily_report_text(lcon,lcfg,day) for lcfg,lcon in leagues]
         body="\n\n\n".join(texts)
@@ -768,8 +772,9 @@ def main():
         if args.save_dir:
             out=Path(args.save_dir).expanduser(); out.mkdir(parents=True,exist_ok=True)
             for (lcfg,_),text in zip(leagues,texts):
-                (out/f"{lcfg['league_key']}.txt").write_text(text+"\n",encoding="utf-8")
-                (out/f"{lcfg['league_key']}-chat.txt").write_text(chat_url(lcfg)+"\n",encoding="utf-8")
+                name=lcfg.get("share_name") or lcfg["league_key"]
+                (out/f"{name}.txt").write_text(text+"\n",encoding="utf-8")
+                (out/f"{name}-chat.txt").write_text(chat_url(lcfg)+"\n",encoding="utf-8")
             print(f"Saved to {out}")
         if args.email:
             if all(day<date.fromisoformat(lcfg["start_date"]) for lcfg,_ in leagues):
