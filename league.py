@@ -483,6 +483,57 @@ def make_html(con, cfg, now=None):
     payload = json.dumps(leaderboard(con, cfg, now=now), ensure_ascii=False).replace("<", "\\u003c")
     return dashboard_template().replace("__DATA__", payload)
 
+GAME_EMOJI = {"Queens":"👑","Tango":"🌗","Zip":"🏁","Mini Sudoku":"✏️","Crossclimb":"🪜","Wend":"🌀","Patches":"🧶"}
+
+def clock(seconds):
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    return f"{h}:{m:02}:{s:02}" if h else f"{m}:{s:02}"
+
+def last_finished_day(now=None):
+    return (now or datetime.now(timezone.utc)).astimezone(PT).date() - timedelta(days=1)
+
+def daily_report_text(con, cfg, day):
+    """Chat-ready summary of one finished puzzle day and the season table up to that day."""
+    if day < date.fromisoformat(cfg["start_date"]):
+        return f"{cfg.get('name','Games League')}: the season starts {cfg['start_date']}."
+    # Leaderboard as seen right after that day's midnight-Pacific reset, ignoring later days.
+    end_of_day = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=PT)
+    data = leaderboard(con, dict(cfg, end_date=day.isoformat()), now=end_of_day)
+    today = next(d for d in data["daily_overall"] if d["date"] == day.isoformat())
+    medals = ["🥇", "🥈", "🥉"]
+    lines = [f"🏆 {data['league_name']} · {day:%a %d %b} · final", ""]
+    for i, (p, v) in enumerate(sorted(today["players"].items(), key=lambda kv: kv[1]["seconds"])):
+        missed = f" ({v['missed']} missed)" if v["missed"] else ""
+        lines.append(f"{medals[i] if i < 3 else f'{i+1}.'} {p} {clock(v['seconds'])}{missed}")
+    fastest = []
+    for d in data["daily"]:
+        winners = [p for p, v in d["players"].items() if v["is_fastest"]]
+        if d["date"] == day.isoformat() and winners:
+            fastest.append(f"{GAME_EMOJI[d['game']]} {' & '.join(winners)} {clock(d['players'][winners[0]]['seconds'])}")
+    if fastest:
+        lines += ["", "Fastest: " + " · ".join(fastest)]
+    n = len(data["daily_overall"])
+    lines += ["", f"Season after {n} day{'s' if n != 1 else ''}:"]
+    for i, (p, v) in enumerate(sorted(data["overall"].items(), key=lambda kv: kv[1]["seconds"])):
+        wins = v["daily_wins"]
+        lines.append(f"{i+1}. {p} {clock(v['seconds'])} · {wins} daily win{'s' if wins != 1 else ''}")
+    return "\n".join(lines)
+
+MAIL_FILE = Path.home() / ".games-league-mail.json"
+
+def send_email(subject, body):
+    """SMTP settings in ~/.games-league-mail.json: user, password (e.g. a Gmail app password), optional to/host/port."""
+    import smtplib
+    from email.message import EmailMessage
+    settings = json.loads(MAIL_FILE.read_text(encoding="utf-8"))
+    msg = EmailMessage()
+    msg["Subject"], msg["From"], msg["To"] = subject, settings["user"], settings.get("to", settings["user"])
+    msg.set_content(body)
+    with smtplib.SMTP_SSL(settings.get("host", "smtp.gmail.com"), int(settings.get("port", 465)), timeout=60) as smtp:
+        smtp.login(settings["user"], settings["password"])
+        smtp.send_message(msg)
+
 def load_league_config(leagues_path, league_key=None, demo=False):
     path = Path(leagues_path)
     if not path.exists():
@@ -656,9 +707,38 @@ def main():
     srv.add_argument("--port",type=int,default=8765)
     srv.add_argument("--poll-minutes",type=int,default=0)
     subs.add_parser("demo-reset",help="Reset all synthetic scores in this demo league")
+    dr=subs.add_parser("daily-report",help="Chat-ready results of the last finished puzzle day, for every league")
+    dr.add_argument("--date",help="Puzzle day YYYY-MM-DD (default: the last finished day, Pacific time)")
+    dr.add_argument("--sync",action="store_true",help="Sync from LinkedIn first")
+    dr.add_argument("--email",action="store_true",help=f"Email it (SMTP settings in {MAIL_FILE})")
+    dr.add_argument("--once",action="store_true",help="Do nothing if this day's email was already sent")
     args=ap.parse_args()
     cfg=load_league_config(args.leagues,args.league,args.demo)
     args.league=cfg["league_key"]
+    if args.command=="daily-report":
+        if args.demo: ap.error("daily-report reads the official leagues only")
+        day=date.fromisoformat(args.date) if args.date else last_finished_day()
+        keys=list(json.loads(Path(args.leagues).read_text(encoding="utf-8")))
+        leagues=[(load_league_config(args.leagues,k),open_db(Path(__file__).parent/f"official_{k}.db")) for k in keys]
+        def already_sent(lcon):
+            row=lcon.execute("SELECT value FROM metadata WHERE key='report_sent'").fetchone()
+            return row is not None and row[0]==day.isoformat()
+        if args.once and all(already_sent(lcon) for _,lcon in leagues):
+            print(f"Report for {day} already sent"); return
+        if args.sync:
+            for lcfg,lcon in leagues:
+                try: sync_linkedin(lcon,lcfg,linkedin_token())
+                except RuntimeError as exc: print(f"Sync error ({lcfg['league_key']}): {exc}",file=sys.stderr)
+        body="\n\n\n".join(daily_report_text(lcon,lcfg,day) for lcfg,lcon in leagues)
+        print(body)
+        if args.email:
+            if all(day<date.fromisoformat(lcfg["start_date"]) for lcfg,_ in leagues):
+                print("Season has not started: no email sent"); return
+            send_email(f"Games League · {day:%a %d %b} results","Paste each block into its LinkedIn chat.\n\n\n"+body)
+            for _,lcon in leagues:
+                lcon.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES('report_sent',?)",(day.isoformat(),)); lcon.commit()
+            print("Email sent")
+        return
     if args.demo and args.command in ("import-csv","sync-api","find-chat"):
         ap.error("The demo cannot import actual LinkedIn messages. Omit --demo.")
     if args.command=="find-chat":

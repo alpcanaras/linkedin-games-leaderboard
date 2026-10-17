@@ -222,3 +222,23 @@ class ChangelogTests(unittest.TestCase):
         stored = [r["content"] for r in self.con.execute("SELECT content FROM changelog_messages")]
         self.assertEqual(stored, ["Zip #578 | 0:11"])  # only score text from this chat is kept
         self.assertEqual(self.results(), [])            # and the start-date gate still applies
+
+class DailyReportTests(unittest.TestCase):
+    def test_report_ranks_day_and_season_and_ignores_later_days(self):
+        from league import daily_report_text
+        from datetime import date
+        t = tempfile.TemporaryDirectory(); self.addCleanup(t.cleanup)
+        con = open_db(Path(t.name)/"r.db"); self.addCleanup(con.close)
+        cfg = {"name":"Test league","start_date":"2026-10-19","conversation_id":"c","players":["A","B"],
+               "aliases":{"A":["Alice"],"B":["Bob"]},"fallback_seconds":dict.fromkeys(["Queens","Tango","Zip","Mini Sudoku","Crossclimb","Wend","Patches"],[10]*7)}
+        row = lambda who, when, text: {"CONVERSATION ID":"c","FROM":who,"DATE":when,"CONTENT":text}
+        ingest_rows(con, cfg, [row("Alice","2026-10-19 12:00:00 UTC","Queens #902 | 0:20"),
+                               row("Bob","2026-10-19 13:00:00 UTC","Queens #902 | 0:30\nZip #581 | 0:05"),
+                               row("Alice","2026-10-20 12:00:00 UTC","Queens #903 | 0:01")])
+        text = daily_report_text(con, cfg, date(2026,10,19))
+        self.assertIn("Test league · Mon 19 Oct · final", text)
+        self.assertIn("👑 A 0:20", text)
+        self.assertIn("🏁 B 0:05", text)
+        self.assertIn("Season after 1 day:", text)
+        self.assertNotIn("0:01", text)  # the next day's score is not part of this report
+        self.assertIn("season starts", daily_report_text(con, cfg, date(2026,10,18)))

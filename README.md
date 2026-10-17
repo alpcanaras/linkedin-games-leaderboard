@@ -101,6 +101,17 @@ How the two API sources behave (checked with a real account in October 2026):
 
 The API returns member data, **not** LinkedIn's game-wide daily averages. No browser-automation collector is included, because LinkedIn restricts accounts for unauthorised automation.
 
+### Daily results message
+
+`daily-report` writes a chat-ready summary of the last finished puzzle day (Pacific time) for every league: the day's ranking with medals, the fastest player per game, and the season table.
+
+```bash
+python3 league.py daily-report                      # print it
+python3 league.py daily-report --sync --email --once  # sync, email it once per day
+```
+
+LinkedIn's API cannot send chat messages for you, so the message is emailed and you paste it into the chat. Email uses SMTP settings in `~/.games-league-mail.json` (`user`, `password`, optional `to`, `host`, `port`; for Gmail use an app password). Schedule the command shortly after the reset, at 00:05 Pacific; with `--once` it is safe to run it at both 08:05 and 09:05 Central European time to cover the weeks when Europe and the US change clocks on different dates.
+
 ### Global averages
 
 If you collect LinkedIn's daily averages yourself, import them after the start:
