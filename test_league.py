@@ -265,3 +265,18 @@ class PuzzleNumberTests(unittest.TestCase):
     def test_bonus_puzzle_ignored(self):
         rows = [{"CONVERSATION ID":"c","FROM":"Bob","DATE":"2026-10-19 12:00:00 UTC","CONTENT":"Bonus puzzleQueens #1000027 | 1:14"}]
         self.assertEqual(ingest_rows(self.con, self.cfg, rows), {"ignored_bonus_puzzle":1})
+
+class LiveReportTests(unittest.TestCase):
+    def test_live_text_shows_today_so_far(self):
+        from league import live_report_text
+        t = tempfile.TemporaryDirectory(); self.addCleanup(t.cleanup)
+        con = open_db(Path(t.name)/"l.db"); self.addCleanup(con.close)
+        cfg = {"name":"Test league","start_date":"2026-10-19","conversation_id":"c","players":["A","B"],
+               "aliases":{"A":["Alice"],"B":["Bob"]},"fallback_seconds":dict.fromkeys(["Queens","Tango","Zip","Mini Sudoku","Crossclimb","Wend","Patches"],[10]*7)}
+        ingest_rows(con, cfg, [{"CONVERSATION ID":"c","FROM":"Alice","DATE":"2026-10-19 12:00:00 UTC","CONTENT":"Queens #902 | 0:20"}])
+        text = live_report_text(con, cfg, datetime(2026,10,19,13,tzinfo=timezone.utc))
+        self.assertIn("Test league · Mon 19 Oct · live", text)
+        self.assertIn("1. A 0:20 · 1/7 played", text)
+        self.assertIn("2. B 0:23 · 0/7 played", text)   # provisional penalty: ceil(20 * 9/8)
+        self.assertIn("👑 A 0:20", text)
+        self.assertIn("season starts", live_report_text(con, cfg, datetime(2026,10,18,13,tzinfo=timezone.utc)))

@@ -547,6 +547,29 @@ def daily_report_text(con, cfg, day):
                      f" · {wins} daily win{'s' if wins != 1 else ''}")
     return "\n".join(lines)
 
+def live_report_text(con, cfg, now=None):
+    """Chat-ready standings of the puzzle day still in progress, including provisional penalties."""
+    now = now or datetime.now(timezone.utc)
+    data = leaderboard(con, cfg, now=now)
+    today = next((d for d in data["daily_overall"] if d["date"] == data["today_pt"]), None)
+    if today is None:
+        return f"{cfg.get('name','Games League')}: the season starts {cfg['start_date']}."
+    games = [d for d in data["daily"] if d["date"] == today["date"]]
+    played = Counter(p for d in games for p, v in d["players"].items() if v["status"] == "played")
+    day = date.fromisoformat(today["date"])
+    lines = [f"⏱️ {data['league_name']} · {day:%a %d %b} · live {now.astimezone():%H:%M}", ""]
+    for i, (p, v) in enumerate(sorted(today["players"].items(), key=lambda kv: kv[1]["seconds"])):
+        lines.append(f"{i+1}. {p} {clock(v['seconds'])} · {played[p]}/{len(GAMES)} played")
+    fastest = []
+    for d in games:
+        winners = [p for p, v in d["players"].items() if v["is_fastest"]]
+        if winners:
+            fastest.append(f"{GAME_EMOJI[d['game']]} {' & '.join(winners)} {clock(d['players'][winners[0]]['seconds'])}")
+    if fastest:
+        lines += ["", "Fastest so far: " + " · ".join(fastest)]
+    lines += ["", "Not played yet = provisional penalty for every game someone else already played."]
+    return "\n".join(lines)
+
 def chat_url(cfg):
     """Web link to the league's LinkedIn conversation; override with "chat_url" in leagues.json."""
     return cfg.get("chat_url") or f"https://www.linkedin.com/messaging/thread/{cfg['conversation_id']}/"
@@ -755,6 +778,7 @@ def main():
     dr.add_argument("--save-dir",help="Also write <name>.txt (the message) and <name>-chat.txt (link to the LinkedIn "
                                       "chat) here, e.g. an iCloud Drive folder read by an iPhone shortcut. <name> is the "
                                       "league's share_name in leagues.json, else its key")
+    dr.add_argument("--live",action="store_true",help="With --save-dir, also write '<name> live.txt': today's standings so far")
     args=ap.parse_args()
     cfg=load_league_config(args.leagues,args.league,args.demo)
     args.league=cfg["league_key"]
@@ -778,9 +802,12 @@ def main():
         print(body)
         if args.save_dir:
             out=Path(args.save_dir).expanduser(); out.mkdir(parents=True,exist_ok=True)
-            for (lcfg,_),text in zip(leagues,texts):
+            for (lcfg,lcon),text in zip(leagues,texts):
                 name=lcfg.get("share_name") or lcfg["league_key"]
-                for f,content in ((out/f"{name}.txt",text+"\n"),(out/f"{name}-chat.txt",chat_url(lcfg)+"\n")):
+                files=[(out/f"{name}.txt",text+"\n"),(out/f"{name}-chat.txt",chat_url(lcfg)+"\n")]
+                if args.live:
+                    files.append((out/f"{name} live.txt",live_report_text(lcon,lcfg)+"\n"))
+                for f,content in files:
                     # Rewrite only on change: every new iCloud version can land on the phone as a
                     # not-yet-downloaded placeholder that Shortcuts cannot open.
                     if not f.exists() or f.read_text(encoding="utf-8")!=content:
