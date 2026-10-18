@@ -651,7 +651,7 @@ def demo_time(value):
         return datetime(2026,10,19,0,1,tzinfo=PT)
     return datetime.now(timezone.utc)
 
-def serve(con, cfg, port, interval=0, demo=False):
+def serve(con, cfg, port, interval=0, demo=False, host="127.0.0.1"):
     if interval and not demo:
         def worker():
             while True:
@@ -708,9 +708,15 @@ def serve(con, cfg, port, interval=0, demo=False):
                 self.reply(400,json.dumps({"ok":False,"error":str(exc)}))
         def log_message(self, format_, *args):
             pass
+    if demo and host != "127.0.0.1":
+        raise SystemExit("The sandbox accepts score edits, so it only listens on 127.0.0.1")
     print(f"Local dashboard: http://localhost:{port} (demo={demo})", flush=True)
-    print("Bound to localhost only. Never expose unauthenticated dashboard to the Internet.", flush=True)
-    ThreadingHTTPServer(("127.0.0.1",port),Handler).serve_forever()
+    if host == "127.0.0.1":
+        print("Bound to localhost only. Never expose unauthenticated dashboard to the Internet.", flush=True)
+    else:
+        print(f"Listening on {host}: read-only dashboard visible to devices on the same network. "
+              "Never forward it to the Internet.", flush=True)
+    ThreadingHTTPServer((host,port),Handler).serve_forever()
 
 def main():
     ap=argparse.ArgumentParser(description="LinkedIn Games League, two separate leagues + sandbox")
@@ -738,6 +744,7 @@ def main():
     report.add_argument("--output",default="leaderboard.html")
     srv=subs.add_parser("serve",help="Serve local dashboard")
     srv.add_argument("--port",type=int,default=8765)
+    srv.add_argument("--host",default="127.0.0.1",help="0.0.0.0 to view the (read-only) dashboard from a phone on the same Wi-Fi")
     srv.add_argument("--poll-minutes",type=int,default=0)
     subs.add_parser("demo-reset",help="Reset all synthetic scores in this demo league")
     dr=subs.add_parser("daily-report",help="Chat-ready results of the last finished puzzle day, for every league")
@@ -847,7 +854,7 @@ def main():
         Path(args.output).write_text(make_html(con,cfg).replace("__DEMO__","true" if args.demo else "false").replace("__ASOF__",'""'),encoding="utf-8")
         print(f"Saved {args.output}")
     elif args.command=="serve":
-        serve(con,cfg,args.port,args.poll_minutes,args.demo)
+        serve(con,cfg,args.port,args.poll_minutes,args.demo,args.host)
 
 if __name__=="__main__":
     main()

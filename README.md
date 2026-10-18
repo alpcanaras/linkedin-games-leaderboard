@@ -137,6 +137,8 @@ python3 league.py --league friend_group import-averages averages.csv
 
 The data volumes are tiny. SQLite writes scores to disk, and the changelog keeps 28 days, so a Mac that was asleep or off catches up on the next sync. The dashboard itself is offline while the computer is off.
 
+To view the leaderboard from a phone on the same Wi-Fi, add `--host 0.0.0.0` to `serve` and open `http://<computer-name>.local:<port>` (macOS may ask once whether Python may accept incoming connections). The official dashboard is read-only; the sandbox always stays on 127.0.0.1. On a public network, other people on that network could open it too.
+
 Running locally costs nothing. There is no hosted or mobile version: do **not** expose the unauthenticated local server to the internet.
 
 ## Tests
