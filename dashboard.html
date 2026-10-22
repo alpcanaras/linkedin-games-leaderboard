@@ -21,7 +21,7 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
 </style>
 </head>
 <body><main class="wrap">
-<header><div><div class="eyebrow">Personal games championship</div><h1 id="leagueTitle">LinkedIn Games League</h1><p class="lead" id="subhead">7 divisions · cumulative raw seconds · lowest total wins</p></div><span class="flag" id="badge">OFFICIAL</span></header>
+<header><div><div class="eyebrow">Personal games championship</div><h1 id="leagueTitle">LinkedIn Games League</h1><p class="lead" id="subhead">cumulative raw seconds · lowest total wins</p></div><span class="flag" id="badge">OFFICIAL</span></header>
 <div class="metrics"><div class="metric"><small>League begins</small><div class="value" id="startMetric">...</div></div><div class="metric"><small>Completed entries</small><div class="value" id="playedMetric">0</div></div><div class="metric"><small>Penalties finalized</small><div class="value" id="missedMetric">0</div></div><div class="metric"><small>Projected penalties</small><div class="value" id="pendingMetric">0</div></div></div>
 <section id="demoArea" class="demoArea hide">
 <div class="toprow"><h2>Practice controls, synthetic data only</h2><button class="btn" id="resetDemo">Reset sample results</button></div>
@@ -46,7 +46,7 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
 const DATA=__DATA__;
 const DEMO=__DEMO__;
 const ASOF=__ASOF__;
-const GAMES=['Overall','Queens','Tango','Zip','Mini Sudoku','Crossclimb','Wend','Patches'];
+const GAMES=['Overall',...DATA.games];
 let selected='Overall';
 function fmt(n){if(n==null)return '—';n=Math.round(n);const h=Math.floor(n/3600),m=Math.floor((n%3600)/60),s=n%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`}
 function esc(v){return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;')}
@@ -60,7 +60,7 @@ function render(){
   let all=Object.values(DATA.overall);document.getElementById('playedMetric').textContent=all.reduce((a,b)=>a+b.played,0);
   document.getElementById('missedMetric').textContent=all.reduce((a,b)=>a+b.missed,0);
   document.getElementById('pendingMetric').textContent=all.reduce((a,b)=>a+b.pending,0);
-  document.getElementById('subhead').textContent=`${DATA.players.length} competitors · 7 divisions · raw cumulative time · 12.5% premium`;
+  document.getElementById('subhead').textContent=`${DATA.players.length} competitors · ${DATA.games.length} divisions · raw cumulative time · 12.5% premium`;
   document.getElementById('dayState').textContent=DATA.daily.length?'As of '+DATA.today_pt:'Starts '+DATA.start_date;
   document.getElementById('tabs').innerHTML=GAMES.map(g=>`<button type="button" class="tab ${selected===g?'active':''}" data-game="${esc(g)}">${esc(g)}</button>`).join('');
   document.querySelectorAll('[data-game]').forEach(b=>b.addEventListener('click',()=>{selected=b.dataset.game;render()}));

@@ -280,3 +280,34 @@ class LiveReportTests(unittest.TestCase):
         self.assertIn("2. B 0:23 · 0/7 played", text)   # provisional penalty: ceil(20 * 9/8)
         self.assertIn("👑 A 0:20", text)
         self.assertIn("season starts", live_report_text(con, cfg, datetime(2026,10,18,13,tzinfo=timezone.utc)))
+
+class LeagueGamesTests(unittest.TestCase):
+    def setUp(self):
+        self.t = tempfile.TemporaryDirectory(); self.addCleanup(self.t.cleanup)
+        self.cfg = {"name":"G","start_date":"2026-10-19","conversation_id":"c","players":["A","B"],"me":"A",
+                    "aliases":{"A":["Alice"],"B":["Bob"]},"games":["Queens","Zip"],
+                    "fallback_seconds":dict.fromkeys(["Queens","Tango","Zip","Mini Sudoku","Crossclimb","Wend","Patches"],[10]*7)}
+    def test_games_outside_the_league_never_count_not_even_as_penalties(self):
+        con = open_db(Path(self.t.name)/"g.db"); self.addCleanup(con.close)
+        ingest_rows(con, self.cfg, [{"CONVERSATION ID":"c","FROM":"Alice","DATE":"2026-10-19 12:00:00 UTC",
+                                     "CONTENT":"Queens #902 | 0:20\nMini Sudoku #434 | 1:00\nZip #581 | 0:05"},
+                                    {"CONVERSATION ID":"c","FROM":"Bob","DATE":"2026-10-19 13:00:00 UTC","CONTENT":"Queens #902 | 0:30"}])
+        data = leaderboard(con, self.cfg, datetime(2026,10,20,12,tzinfo=timezone.utc))
+        self.assertEqual(data["games"], ["Queens","Zip"])
+        self.assertEqual(sorted(data["totals"]), ["Queens","Zip"])
+        self.assertEqual({d["game"] for d in data["daily"]}, {"Queens","Zip"})
+        self.assertEqual(data["overall"]["A"]["seconds"], 25)            # Sudoku's 1:00 is ignored
+        self.assertEqual(data["overall"]["B"]["seconds"], 30 + 12)       # missed Zip: ceil(max(5,10)*9/8); no Sudoku penalty
+    def test_sync_makes_one_changelog_call_for_all_leagues_and_snapshot_weekly(self):
+        from unittest import mock
+        import league
+        cons = [open_db(Path(self.t.name)/f"{k}.db") for k in ("x","y")]
+        for c in cons: self.addCleanup(c.close)
+        leagues = [(dict(self.cfg, league_key="x"), cons[0]), (dict(self.cfg, league_key="y", conversation_id="d"), cons[1])]
+        with mock.patch.object(league, "api_changelog_events", return_value=iter([])) as feed, \
+             mock.patch.object(league, "api_snapshot_pages", return_value=iter([])) as snap:
+            league.sync_leagues(leagues, "token")
+            feed.return_value = iter([])
+            league.sync_leagues(leagues, "token")
+        self.assertEqual(feed.call_count, 2)   # one per sync, shared by both leagues
+        self.assertEqual(snap.call_count, 1)   # the second sync is within the week

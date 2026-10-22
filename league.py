@@ -46,6 +46,10 @@ PUZZLE_ON_REFERENCE_DAY = {"Queens": 900, "Tango": 740, "Zip": 579, "Mini Sudoku
                            "Crossclimb": 900, "Wend": 131, "Patches": 214}
 BONUS_PUZZLE_FROM = 1_000_000
 
+def league_games(cfg):
+    """The games a league plays, in standard order ("games" in leagues.json, default all)."""
+    return tuple(g for g in GAMES if g in cfg.get("games", GAMES))
+
 def puzzle_check(game, number, puzzle_day):
     """'ok', 'bonus', or 'old' (a share of an earlier day's puzzle, e.g. yesterday's posted after the reset)."""
     if number >= BONUS_PUZZLE_FROM:
@@ -342,6 +346,37 @@ def map_sender(con, cfg, urn, name):
     remember_sender(con, urn, alias, "manual", override=True)
     return resolve_changelog(con, cfg)
 
+def sync_leagues(leagues, token, snapshot_hours=168):
+    """One changelog request shared by all leagues (LinkedIn suggests one call per member per hour).
+    The INBOX snapshot only grows, by a full copy per refresh, so it is fetched at most every snapshot_hours."""
+    cursors = []
+    for _, con in leagues:
+        with DB_LOCK:
+            row = con.execute("SELECT value FROM metadata WHERE key='changelog_cursor'").fetchone()
+        cursors.append(int(row[0]) if row else 0)
+    stats = {}
+    events = list(api_changelog_events(token, min(cursors) or None))
+    for cfg, con in leagues:
+        stats[cfg["league_key"]] = {"changelog": ingest_changelog(con, cfg, events)}
+    now = datetime.now(timezone.utc)
+    def snapshot_due(con):
+        with DB_LOCK:
+            row = con.execute("SELECT value FROM metadata WHERE key='last_snapshot'").fetchone()
+        return row is None or now - datetime.fromisoformat(row[0]) >= timedelta(hours=snapshot_hours)
+    if snapshot_hours and any(snapshot_due(con) for _, con in leagues):
+        # Record the attempt first: a failed download (e.g. HTTP 429) also waits snapshot_hours.
+        for _, con in leagues:
+            with DB_LOCK:
+                con.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES('last_snapshot',?)", (now.isoformat(),))
+                con.commit()
+        rows = list(api_snapshot_pages(token))
+        for cfg, con in leagues:
+            s = stats[cfg["league_key"]]
+            s["snapshot"] = ingest_rows(con, cfg, rows)
+            s["learned_senders"] = learn_senders_from_rows(con, cfg, rows)
+            s["resolved"] = resolve_changelog(con, cfg)
+    return stats
+
 def sync_linkedin(con, cfg, token, snapshot=True):
     """Live changelog first, then the full INBOX snapshot (catch-up, and it teaches sender URNs)."""
     with DB_LOCK:
@@ -407,6 +442,8 @@ def leaderboard(con, cfg, now=None):
     now = now or datetime.now(timezone.utc)
     today = now.astimezone(PT).date()
     start = date.fromisoformat(cfg["start_date"])
+    # Results of games the league does not play stay stored but never count, not even as penalties.
+    games = league_games(cfg)
     with DB_LOCK:
         rows = [dict(r) for r in con.execute("SELECT * FROM results WHERE puzzle_date >= ?", (start.isoformat(),))]
         averages = {(r["game"],r["puzzle_date"]):dict(r)
@@ -416,7 +453,7 @@ def leaderboard(con, cfg, now=None):
           WHERE author NOT IN (SELECT urn FROM sender_urns)""").fetchone()[0]
     indexed = {(r["game"], r["puzzle_date"], r["player"]): r for r in rows}
     totals = {game:{p:{"seconds":0,"played":0,"missed":0,"pending":0,
-                        "beats":0,"beaten":0} for p in cfg["players"]} for game in GAMES}
+                        "beats":0,"beaten":0} for p in cfg["players"]} for game in games}
     daily = []
     days_overall = []
     last_day = min(today, date.fromisoformat(cfg.get("end_date", "9999-12-31")))
@@ -427,7 +464,7 @@ def leaderboard(con, cfg, now=None):
         daily_sum = {p:0 for p in cfg["players"]}
         daily_finished = True
         day_missed_count = {p:0 for p in cfg["players"]}
-        for game in GAMES:
+        for game in games:
             submitted = [indexed[(game,daystr,p)] for p in cfg["players"]
                          if (game,daystr,p) in indexed]
             global_avg = averages.get((game,daystr))
@@ -475,7 +512,7 @@ def leaderboard(con, cfg, now=None):
                           "missing_penalty": missed_seconds if len(submitted)<len(cfg["players"]) else 0,
                           "players":players,"puzzle_numbers_conflict":inconsistent})
         winner = min(daily_sum.values()) if daily_sum else None
-        any_result = any((g,daystr,p) in indexed for g in GAMES for p in cfg["players"])
+        any_result = any((g,daystr,p) in indexed for g in games for p in cfg["players"])
         days_overall.append({"date":daystr,"final":daily_finished,
                              "players":{p:{"seconds":daily_sum[p],
                                            "missed":day_missed_count[p],
@@ -483,19 +520,19 @@ def leaderboard(con, cfg, now=None):
                                         for p in cfg["players"]}})
     overall = {}
     for p in cfg["players"]:
-        overall[p] = {"seconds":sum(totals[g][p]["seconds"] for g in GAMES),
-                      "played":sum(totals[g][p]["played"] for g in GAMES),
-                      "missed":sum(totals[g][p]["missed"] for g in GAMES),
-                      "pending":sum(totals[g][p]["pending"] for g in GAMES),
-                      "beats":sum(totals[g][p]["beats"] for g in GAMES),
-                      "beaten":sum(totals[g][p]["beaten"] for g in GAMES),
+        overall[p] = {"seconds":sum(totals[g][p]["seconds"] for g in games),
+                      "played":sum(totals[g][p]["played"] for g in games),
+                      "missed":sum(totals[g][p]["missed"] for g in games),
+                      "pending":sum(totals[g][p]["pending"] for g in games),
+                      "beats":sum(totals[g][p]["beats"] for g in games),
+                      "beaten":sum(totals[g][p]["beaten"] for g in games),
                       "daily_wins":sum(int(d["final"] and d["players"][p]["is_fastest"]) for d in days_overall)}
     return {"start_date":start.isoformat(), "today_pt":today.isoformat(),
             "generated_at":now.isoformat(), "last_import":meta.get("last_import"),
             "league_name":cfg.get("name","Games League"),
             "players":cfg["players"],"totals":totals,"overall":overall,
             "daily":daily,"daily_overall":days_overall,
-            "league_key":cfg.get("league_key"),"unknown_senders":unknown_senders}
+            "league_key":cfg.get("league_key"),"unknown_senders":unknown_senders,"games":list(games)}
 
 def dashboard_template():
     return (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
@@ -559,7 +596,7 @@ def live_report_text(con, cfg, now=None):
     day = date.fromisoformat(today["date"])
     lines = [f"⏱️ {data['league_name']} · {day:%a %d %b} · live {now.astimezone():%H:%M}", ""]
     for i, (p, v) in enumerate(sorted(today["players"].items(), key=lambda kv: kv[1]["seconds"])):
-        lines.append(f"{i+1}. {p} {clock(v['seconds'])} · {played[p]}/{len(GAMES)} played")
+        lines.append(f"{i+1}. {p} {clock(v['seconds'])} · {played[p]}/{len(data['games'])} played")
     fastest = []
     for d in games:
         winners = [p for p, v in d["players"].items() if v["is_fastest"]]
@@ -605,6 +642,8 @@ def load_league_config(leagues_path, league_key=None, demo=False):
         cfg["end_date"] = "2026-10-18"
     if len(cfg["players"]) < 2 or set(cfg["players"]) != set(cfg["aliases"]):
         raise ValueError("Each league requires at least two players with aliases")
+    if "games" in cfg and (not cfg["games"] or set(cfg["games"]) - set(GAMES)):
+        raise ValueError(f"'games' must be a non-empty list from: {', '.join(GAMES)}")
     if cfg.get("me") is not None and cfg["me"] not in cfg["players"]:
         raise ValueError("'me' (the LinkedIn token holder) must be one of the players")
     cfg["league_key"] = league_key
@@ -793,10 +832,9 @@ def main():
         if args.once and all(already_sent(lcon) for _,lcon in leagues):
             print(f"Report for {day} already sent"); return
         if args.sync:
-            for lcfg,lcon in leagues:
-                # Changelog only: fast, and it holds the last minutes before the reset.
-                try: sync_linkedin(lcon,lcfg,linkedin_token(),snapshot=False)
-                except RuntimeError as exc: print(f"Sync error ({lcfg['league_key']}): {exc}",file=sys.stderr)
+            # One shared changelog request for every league; the snapshot only weekly.
+            try: print(datetime.now(timezone.utc).isoformat(timespec="seconds"),"sync",sync_leagues(leagues,linkedin_token()))
+            except RuntimeError as exc: print(datetime.now(timezone.utc).isoformat(timespec="seconds"),f"Sync error: {exc}",file=sys.stderr)
         texts=[daily_report_text(lcon,lcfg,day) for lcfg,lcon in leagues]
         body="\n\n\n".join(texts)
         print(body)

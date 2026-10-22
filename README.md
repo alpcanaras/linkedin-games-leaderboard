@@ -18,6 +18,7 @@ cp leagues.example.json leagues.json
 - `me`: the player who owns the LinkedIn API token (used to recognise their messages in the live feed).
 - `start_date`: first puzzle day of the season, in Pacific time.
 - `fallback_seconds`: per-game reference times for Monday to Sunday, used for penalties until real averages are available.
+- `games` (optional): the games this league plays, for example `["Queens", "Tango", "Zip"]`. Other games are ignored everywhere, including their penalties, also retroactively. Default: all seven.
 
 League keys (`friend_group`, `family_group` in the example) are free to choose; pass them with `--league`. Without `--league` the first league in the file is used.
 
@@ -88,13 +89,15 @@ Then:
 ```bash
 python3 league.py --league friend_group find-chat
 python3 league.py --league friend_group sync-api
-python3 league.py --league friend_group serve --port 8775 --poll-minutes 60
+python3 league.py --league friend_group serve --port 8775
+python3 league.py daily-report --sync              # run this every hour at :01 (cron or launchd)
 ```
 
 How the two API sources behave (checked with a real account in October 2026):
 
 - The **INBOX snapshot** has the same columns as `messages.csv`, with sender names, but it is a copy made at consent time and did not refresh afterwards. It is used for history and catch-up.
-- The **Member Changelog API** shows new messages, including other members' messages, within minutes and keeps 28 days. It names senders only by `urn:li:person:…` IDs. `sync-api` and `serve --poll-minutes` read it first.
+- The **Member Changelog API** shows new messages, including other members' messages, within minutes and keeps 28 days. It names senders only by `urn:li:person:…` IDs.
+- **Rate limits:** LinkedIn answers HTTP 429 when called too often, and the snapshot grows by a full copy of the inbox each time LinkedIn refreshes it. `daily-report --sync` therefore makes one changelog request for all leagues together and downloads the snapshot at most once a week. Run only that command on a schedule, about hourly, instead of `serve --poll-minutes` per league.
 - Sender IDs are learned automatically for the token holder (`me`), for the other person in a one-to-one chat, and from snapshot rows with the same chat, text and second. In a group chat, a new sender's scores wait (the dashboard shows a warning) until you map that sender once:
   ```bash
   python3 league.py --league friend_group senders
