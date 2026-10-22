@@ -311,3 +311,17 @@ class LeagueGamesTests(unittest.TestCase):
             league.sync_leagues(leagues, "token")
         self.assertEqual(feed.call_count, 2)   # one per sync, shared by both leagues
         self.assertEqual(snap.call_count, 1)   # the second sync is within the week
+
+class NotFinalWarningTests(unittest.TestCase):
+    def test_warning_until_a_sync_after_the_reset(self):
+        from league import not_final_warning, mark_synced
+        from datetime import date
+        t = tempfile.TemporaryDirectory(); self.addCleanup(t.cleanup)
+        con = open_db(Path(t.name)/"w.db"); self.addCleanup(con.close)
+        cfg = {"start_date":"2026-10-19"}
+        self.assertIn("Not final yet", not_final_warning(con, cfg, date(2026,10,21)))      # never synced
+        mark_synced(con, datetime(2026,10,22,6,59,tzinfo=timezone.utc))                     # 23:59 PDT Wed
+        self.assertIn("Not final yet", not_final_warning(con, cfg, date(2026,10,21)))
+        mark_synced(con, datetime(2026,10,22,7,1,tzinfo=timezone.utc))                      # 00:01 PDT Thu
+        self.assertEqual(not_final_warning(con, cfg, date(2026,10,21)), "")
+        self.assertEqual(not_final_warning(con, cfg, date(2026,10,18)), "")                 # before the season

@@ -346,6 +346,24 @@ def map_sender(con, cfg, urn, name):
     remember_sender(con, urn, alias, "manual", override=True)
     return resolve_changelog(con, cfg)
 
+def mark_synced(con, when=None):
+    with DB_LOCK:
+        con.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES('last_sync',?)",
+                    ((when or datetime.now(timezone.utc)).isoformat(),))
+        con.commit()
+
+def not_final_warning(con, cfg, day):
+    """Warning line when LinkedIn has not delivered messages since before the day's reset, else ''."""
+    if day < date.fromisoformat(cfg["start_date"]):
+        return ""
+    with DB_LOCK:
+        row = con.execute("SELECT value FROM metadata WHERE key='last_sync'").fetchone()
+    reset = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=PT)
+    if row and datetime.fromisoformat(row[0]) >= reset:
+        return ""
+    since = f" since {datetime.fromisoformat(row[0]).astimezone():%a %H:%M}" if row else ""
+    return f"⚠️ Not final yet: LinkedIn has not delivered new messages{since}. Don't post this yet.\n\n"
+
 def sync_leagues(leagues, token, snapshot_hours=168):
     """One changelog request shared by all leagues (LinkedIn suggests one call per member per hour).
     The INBOX snapshot only grows, by a full copy per refresh, so it is fetched at most every snapshot_hours."""
@@ -358,6 +376,7 @@ def sync_leagues(leagues, token, snapshot_hours=168):
     events = list(api_changelog_events(token, min(cursors) or None))
     for cfg, con in leagues:
         stats[cfg["league_key"]] = {"changelog": ingest_changelog(con, cfg, events)}
+        mark_synced(con)
     now = datetime.now(timezone.utc)
     def snapshot_due(con):
         with DB_LOCK:
@@ -382,6 +401,7 @@ def sync_linkedin(con, cfg, token, snapshot=True):
     with DB_LOCK:
         row = con.execute("SELECT value FROM metadata WHERE key='changelog_cursor'").fetchone()
     stats = {"changelog": ingest_changelog(con, cfg, api_changelog_events(token, int(row[0]) if row else None))}
+    mark_synced(con)
     if not snapshot:
         return stats
     try:
@@ -835,7 +855,7 @@ def main():
             # One shared changelog request for every league; the snapshot only weekly.
             try: print(datetime.now(timezone.utc).isoformat(timespec="seconds"),"sync",sync_leagues(leagues,linkedin_token()))
             except RuntimeError as exc: print(datetime.now(timezone.utc).isoformat(timespec="seconds"),f"Sync error: {exc}",file=sys.stderr)
-        texts=[daily_report_text(lcon,lcfg,day) for lcfg,lcon in leagues]
+        texts=[not_final_warning(lcon,lcfg,day)+daily_report_text(lcon,lcfg,day) for lcfg,lcon in leagues]
         body="\n\n\n".join(texts)
         print(body)
         if args.save_dir:
